@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>抽奖后台配置</title>
+  <style>
+    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#0f172a; color:#e5e7eb }
+    .wrap{ max-width:900px; margin:20px auto; padding:0 16px }
+    h1{ margin:0 0 12px 0 }
+    textarea{ width:100%; height:360px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:#e5e7eb; padding:12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace }
+    .row{ display:flex; gap:10px; margin:10px 0 }
+    input,button{ padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color:#e5e7eb }
+    button{ cursor:pointer; font-weight:700 }
+    .hint{ color:#9ca3af; font-size:14px }
+    pre{ background: rgba(255,255,255,.05); padding:10px; border-radius:10px; overflow:auto }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <img src="/assets/logo.png" alt="糖小窝 logo" style="height:40px;width:auto">
+    <h1 style="margin:0">糖小窝 · 抽奖后台配置（需要管理员 Token）</h1>
+  </div>
+  <div class="hint">粘贴奖品 JSON（数组）。结构：<code>[{ id?, name, weight, qty, img }]</code>；<b>qty=-1 表示不限量</b>；<b>img</b> 可用图片 URL 或 base64 dataURL。</div>
+  <div class="row">
+    <input id="token" placeholder="管理员 Token（一次填写后会保存在本地）" style="flex:1">
+    <button id="btnReset">恢复默认</button>
+    <button id="btnLoadSample">填入示例</button>
+    <button id="btnSave">保存</button>
+  </div>
+  <textarea id="json"></textarea>
+  <h3>示例</h3>
+  <pre id="sample"></pre>
+</div>
+<script>
+const sample = [
+  { name:"一等奖", weight:1, qty:1, img:"https://picsum.photos/seed/first/600/600" },
+  { name:"二等奖", weight:2, qty:2, img:"https://picsum.photos/seed/second/600/600" },
+  { name:"三等奖", weight:3, qty:5, img:"https://picsum.photos/seed/third/600/600" },
+  { name:"安慰奖", weight:6, qty:-1, img:"https://picsum.photos/seed/comfort/600/600" },
+  { name:"谢谢参与", weight:12, qty:-1, img:"https://picsum.photos/seed/thanks/600/600" }
+];
+document.getElementById('sample').textContent = JSON.stringify(sample, null, 2);
+const $token = document.getElementById('token');
+$token.value = localStorage.getItem('ADMIN_TOKEN') || '';
+document.getElementById('btnLoadSample').onclick = () => {
+  document.getElementById('json').value = JSON.stringify(sample, null, 2);
+};
+document.getElementById('btnReset').onclick = async () => {
+  const token = $token.value.trim(); if(!token) return alert('请输入管理员 Token');
+  localStorage.setItem('ADMIN_TOKEN', token);
+  const r = await fetch('/api/admin-reset?token=' + encodeURIComponent(token), { method:'POST' });
+  if(!r.ok) return alert('重置失败');
+  alert('已恢复默认');
+};
+document.getElementById('btnSave').onclick = async () => {
+  const token = $token.value.trim(); if(!token) return alert('请输入管理员 Token');
+  localStorage.setItem('ADMIN_TOKEN', token);
+  let data;
+  try{ data = JSON.parse(document.getElementById('json').value); }catch(e){ return alert('JSON 格式错误'); }
+  const r = await fetch('/api/admin-set-prizes?token=' + encodeURIComponent(token), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prizes: data }) });
+  if(!r.ok) return alert('保存失败');
+  alert('保存成功');
+};
+</script>
+</body>
+</html>

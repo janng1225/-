@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎉 多人共享库存抽奖</title>
+  <style>
+    :root{ --bg:#0f172a; --text:#e5e7eb; --muted:#9ca3af; --border:rgba(255,255,255,.1); --brand:#9aaca3; --ok:#a4b4ac; --danger:#ef4444; }
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background: radial-gradient(1200px 800px at 70% -10%, rgba(34,211,238,.25), transparent 40%), radial-gradient(1200px 900px at -10% 110%, rgba(167,139,250,.18), transparent 40%), var(--bg); color:var(--text) }
+    .container{ max-width:1080px; margin: 18px auto; padding: 0 14px }
+    .brand-box{ display:flex; align-items:center; gap:12px }
+    .brand-box .logo{ height:42px; width:auto; display:block }
+    header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px }
+    h1{ font-size: clamp(20px,4vw,28px); margin:0 }
+    .subtitle{ color:var(--muted); font-size:14px }
+    .btn{ border:1px solid var(--border); background: rgba(255,255,255,.05); color:var(--text); padding:10px 14px; border-radius:12px; font-weight:600; cursor:pointer }
+    .btn:active{ transform: translateY(1px) }
+    .grid{ display:grid; grid-template-columns: 1.1fr .9fr; gap:16px }
+    @media (max-width: 980px){ .grid{ grid-template-columns: 1fr } }
+    .panel{ background: rgba(255,255,255,.04); border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow: 0 10px 30px rgba(0,0,0,.35) }
+    .reel-wrap{ position:relative; height:180px; overflow:hidden; border-radius:14px; background:rgba(0,0,0,.2); border:1px solid var(--border) }
+    .reel-track{ position:absolute; left:0; top:0; width:100% }
+    .reel-item{ display:flex; align-items:center; gap:12px; padding:10px 12px; height:180px; border-bottom:1px dashed rgba(255,255,255,.06) }
+    .reel-item img{ width:140px; height:140px; object-fit:cover; border-radius:12px; border:1px solid var(--border); background:#111 }
+    .reel-item .name{ font-weight:800 }
+    .reel-item .desc{ color:var(--muted); font-size:12px }
+    .highlight{ pointer-events:none; position:absolute; left:10px; right:10px; top:50%; transform:translateY(-50%); height:176px; border:2px dashed rgba(34,211,238,.5); border-radius:12px; box-shadow: 0 0 0 4px rgba(34,211,238,.08) inset }
+    .actions{ display:flex; gap:10px; margin-top:10px; align-items:center }
+    .start{ padding:12px 18px; background: linear-gradient(180deg, rgba(34,197,94,.25), rgba(34,197,94,.06)); border:1px solid var(--border); border-radius:12px; font-weight:800 }
+    .stock{ color:var(--muted); font-size:12px; border:1px solid var(--border); padding:4px 8px; border-radius:8px }
+    .winner-card{ display:flex; align-items:center; gap:12px }
+    .winner-card img{ width:88px; height:88px; border-radius:12px; border:1px solid var(--border); object-fit:cover }
+    .records{ max-height:420px; overflow:auto; border-top:1px dashed var(--border); margin-top:8px; padding-top:8px }
+    .record{ display:flex; justify-content:space-between; padding:6px; border-bottom:1px dashed rgba(255,255,255,.06) }
+    .toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:rgba(0,0,0,.75); color:#fff; padding:10px 14px; border-radius:12px; display:none }
+    .toast.show{ display:block }
+    canvas#confetti{ position:fixed; inset:0; pointer-events:none; z-index:50 }
+  </style>
+</head>
+<body>
+  <canvas id="confetti"></canvas>
+  <div class="container">
+    <header>
+      <div class="brand-box">
+        <img src="/assets/logo.png" class="logo" alt="糖小窝 logo">
+        <div>
+          <h1>🎉 糖小窝 · 多人共享库存抽奖</h1>
+          <div class="subtitle">打开即用 · 多端同时抽 · 实时共享库存</div>
+        </div>
+      </div>
+      <div>
+        <button class="btn" id="btnRefresh">刷新库存</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="reel-wrap">
+          <div class="reel-track" id="reelTrack"></div>
+          <div class="highlight"></div>
+        </div>
+        <div class="actions">
+          <button class="start" id="btnStart">开始抽奖</button>
+          <div class="stock" id="stockInfo">—</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="winner-card">
+          <img id="winnerImg" src="" alt="预览">
+          <div>
+            <div id="winnerName" style="font-size:20px;font-weight:800">尚未抽取</div>
+            <div class="subtitle" id="winnerTip">点击「开始抽奖」试试手气～</div>
+          </div>
+        </div>
+        <div class="records" id="records"></div>
+      </div>
+    </section>
+  </div>
+
+<script>
+const ITEM_H = 180;
+const els = {
+  reelTrack: document.getElementById('reelTrack'),
+  btnStart: document.getElementById('btnStart'),
+  stockInfo: document.getElementById('stockInfo'),
+  winnerImg: document.getElementById('winnerImg'),
+  winnerName: document.getElementById('winnerName'),
+  winnerTip: document.getElementById('winnerTip'),
+  records: document.getElementById('records'),
+  btnRefresh: document.getElementById('btnRefresh'),
+};
+let prizes = [];
+let isSpinning = false;
+
+function toast(msg){
+  let t = document.querySelector('.toast');
+  if(!t){ t = document.createElement('div'); t.className='toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add('show'); clearTimeout(t._timer); t._timer=setTimeout(()=>t.classList.remove('show'),1600);
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+
+function itemTpl(p){
+  const stockTxt = p.stock === -1 ? '不限' : p.stock;
+  return \`<div class="reel-item">
+    <img src="\${p.img}" alt="\${escapeHtml(p.name)}">
+    <div>
+      <div class="name">\${escapeHtml(p.name)}</div>
+      <div class="desc">概率权重：<b>\${p.weight}</b>　库存：<b>\${stockTxt}</b></div>
+    </div>
+  </div>\`
+}
+
+async function loadPrizes(){
+  const res = await fetch('/api/prizes');
+  const data = await res.json();
+  prizes = data.prizes || [];
+  els.reelTrack.style.transition='none';
+  els.reelTrack.style.transform='translateY(0px)';
+  els.reelTrack.innerHTML = prizes.map(itemTpl).join('');
+  // stock info
+  const total = prizes.reduce((s,p)=> s + (p.stock>0? p.stock: 0), 0);
+  const hasUnlimited = prizes.some(p=> p.stock === -1);
+  els.stockInfo.textContent = \`剩余奖品（不含不限）：\${total}\${hasUnlimited?'（含不限量）':''}\`;
+  // records
+  const recs = data.records || [];
+  els.records.innerHTML = recs.map(r=>{
+    const t = new Date(r.ts); const pad=n=>String(n).padStart(2,'0');
+    const ts = \`\${t.getFullYear()}-\${pad(t.getMonth()+1)}-\${pad(t.getDate())} \${pad(t.getHours())}:\${pad(t.getMinutes())}\`;
+    const p = prizes.find(x=>x.id===r.prizeId);
+    const name = p ? p.name : r.name;
+    return \`<div class="record"><div>\${escapeHtml(name)}</div><div class="subtitle">\${ts}</div></div>\`
+  }).join('');
+}
+
+function confetti(){
+  const cvs = document.getElementById('confetti'); const ctx = cvs.getContext('2d');
+  const dpr = Math.max(1, window.devicePixelRatio||1); cvs.width = innerWidth*dpr; cvs.height = innerHeight*dpr; ctx.scale(dpr,dpr);
+  const colors = ['#22d3ee','#a78bfa','#34d399','#f472b6','#f59e0b','#60a5fa'];
+  const N = 140; const parts = [];
+  for(let i=0;i<N;i++){
+    parts.push({ x: Math.random()*innerWidth, y: -20 - Math.random()*40, r: 3 + Math.random()*5, vx: -1 + Math.random()*2, vy: 2 + Math.random()*3, a: Math.random()*Math.PI, va: -0.2+Math.random()*0.4, c: colors[Math.floor(Math.random()*colors.length)], life: 60 + Math.random()*40 });
+  }
+  let frame = 0; cancelAnimationFrame(confetti._raf);
+  (function tick(){
+    ctx.clearRect(0,0,innerWidth, innerHeight);
+    parts.forEach(p=>{
+      p.x += p.vx; p.y += p.vy; p.a += p.va; p.vy += 0.02; p.life -= 1;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = p.c; ctx.fillRect(-p.r, -p.r, p.r*2, p.r*2); ctx.restore();
+    });
+    frame++; if(frame<120){ confetti._raf = requestAnimationFrame(tick); } else { ctx.clearRect(0,0,innerWidth, innerHeight); }
+  })();
+}
+
+async function drawOnce(){
+  if(isSpinning) return;
+  isSpinning = true; els.btnStart.disabled=true; els.btnStart.textContent='抽取中…';
+
+  // 构建滚轴：多圈 + 预设停留位置（先随机，待结果回填）
+  const cycles = 6; const list = []; for(let c=0;c<cycles;c++) list.push(...prizes);
+  // 先假设最后一个为第一个，以产生动画
+  list.push(prizes[0] || {});
+  els.reelTrack.style.transition='none'; els.reelTrack.style.transform='translateY(0px)';
+  els.reelTrack.innerHTML = list.map(itemTpl).join('');
+  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
+    const distance = - (list.length - 1) * ITEM_H;
+    els.reelTrack.style.transition='transform 2.2s cubic-bezier(.12,.62,.16,1)';
+    els.reelTrack.style.transform = \`translateY(\${distance}px)\`;
+  });});
+
+  // 请求结果
+  let prize = null, err = null;
+  try{
+    const resp = await fetch('/api/draw', { method:'POST' });
+    const data = await resp.json();
+    if(!resp.ok){ throw new Error(data.message || data.error || '抽奖失败'); }
+    prize = data.prize;
+  }catch(e){
+    err = e;
+  }
+
+  const onEnd = async ()=>{
+    els.reelTrack.removeEventListener('transitionend', onEnd);
+    els.btnStart.disabled=false; els.btnStart.textContent='开始抽奖'; isSpinning=false;
+    if(err){ toast(err.message || '抽奖失败'); return; }
+    // 展示中奖
+    els.winnerImg.src = prize.img; els.winnerName.textContent = prize.name; els.winnerTip.textContent='恭喜中奖！'; confetti();
+    await loadPrizes(); // 刷新库存与列表
+  };
+  els.reelTrack.addEventListener('transitionend', onEnd);
+}
+
+els.btnStart.addEventListener('click', drawOnce);
+els.btnRefresh.addEventListener('click', loadPrizes);
+
+loadPrizes();
+</script>
+</body>
+</html>
